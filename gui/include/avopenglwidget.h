@@ -7,6 +7,8 @@
 
 #include <QOpenGLWidget>
 #include <QMutex>
+#include <QLabel>
+#include <QElapsedTimer>
 
 extern "C"
 {
@@ -26,6 +28,7 @@ struct PlaneConfig
 	unsigned int data_per_pixel;
 	GLint internal_format;
 	GLenum format;
+	GLenum data_type;  // GL_UNSIGNED_BYTE or GL_UNSIGNED_SHORT
 };
 
 struct ConversionConfig
@@ -58,9 +61,13 @@ class AVOpenGLWidget: public QOpenGLWidget
 		GLuint program;
 		GLuint vbo;
 		GLuint vao;
+		GLint max_edr_uniform;  // Uniform location for HDR max EDR value
 
 		AVOpenGLFrame frames[2];
 		int frame_fg;
+		bool first_frame_received;
+		bool is_hdr_mode;       // True if using HDR pixel format (P010LE)
+		float max_edr_value;    // Maximum EDR value (>1.0 for HDR displays)
 		QMutex frames_mutex;
 		QOffscreenSurface *frame_uploader_surface;
 		QOpenGLContext *frame_uploader_context;
@@ -68,6 +75,14 @@ class AVOpenGLWidget: public QOpenGLWidget
 		QThread *frame_uploader_thread;
 
 		QTimer *mouse_timer;
+		QLabel *loading_label;
+		QLabel *stats_label;        // Overlay showing mode/codec/fps
+
+		// FPS tracking
+		QElapsedTimer fps_timer;
+		int frame_count;
+		float current_fps;
+		QTimer *stats_update_timer;
 
 		ConversionConfig *conversion_config;
 
@@ -87,9 +102,11 @@ class AVOpenGLWidget: public QOpenGLWidget
 
 		void initializeGL() override;
 		void paintGL() override;
+		void resizeEvent(QResizeEvent *event) override;
 
 	private slots:
 		//void ResetMouseTimeout();
+		void UpdateStatsOverlay();
 	public slots:
 		void HideMouse();
 		void ToggleStretch();

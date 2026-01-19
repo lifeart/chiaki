@@ -57,6 +57,7 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	: QObject(parent),
 	log(this, connect_info.log_level_mask, connect_info.log_file),
 	ffmpeg_decoder(nullptr),
+	video_format_detected(false),
 #if CHIAKI_LIB_ENABLE_PI_DECODER
 	pi_decoder(nullptr),
 #endif
@@ -711,6 +712,14 @@ void StreamSession::HandleSetsuEvent(SetsuEvent *event)
 
 void StreamSession::TriggerFfmpegFrameAvailable()
 {
+	// Emit VideoFormatDetected once when pixel format is first detected
+	// Use thread-safe helper to check if format has been detected
+	if(!video_format_detected && ffmpeg_decoder && chiaki_ffmpeg_decoder_is_format_detected(ffmpeg_decoder))
+	{
+		video_format_detected = true;
+		CHIAKI_LOGI(GetChiakiLog(), "Video format detected: %d", chiaki_ffmpeg_decoder_get_pixel_format(ffmpeg_decoder));
+		emit VideoFormatDetected();
+	}
 	emit FfmpegFrameAvailable();
 }
 

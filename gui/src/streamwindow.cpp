@@ -184,6 +184,23 @@ void StreamWindow::ToggleFullscreen()
 	}
 }
 
+void StreamWindow::VideoFormatDetected()
+{
+	// Video format has been detected, now we can create the OpenGL widget
+	if(av_widget)
+		return; // Already created
+
+	try
+	{
+		av_widget = new AVOpenGLWidget(session, this);
+		setCentralWidget(av_widget);
+	}
+	catch(const Exception &e)
+	{
+		CHIAKI_LOGE(session->GetChiakiLog(), "Failed to create video widget: %s", qPrintable(e.what()));
+	}
+}
+
 void StreamWindow::resizeEvent(QResizeEvent *event)
 {
 	UpdateVideoTransform();

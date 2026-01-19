@@ -162,6 +162,29 @@ static void discovery_service_ping(ChiakiDiscoveryService *service)
 	err = chiaki_discovery_send(&service->discovery, &packet, service->options.send_addr, service->options.send_addr_size);
 	if(err != CHIAKI_ERR_SUCCESS)
 		CHIAKI_LOGE(service->log, "Discovery Service failed to send ping for PS5");
+
+	// Also send to 192.168.88.255 subnet (additional network)
+	if(service->options.send_addr->sa_family == AF_INET)
+	{
+		struct sockaddr_in additional_addr = {};
+		additional_addr.sin_family = AF_INET;
+		// 192.168.88.255 = 0xC0A858FF (network byte order: 0xFF58A8C0)
+		additional_addr.sin_addr.s_addr = htonl(0xC0A858FF);
+
+		// Send PS4 discovery
+		additional_addr.sin_port = htons(CHIAKI_DISCOVERY_PORT_PS4);
+		packet.protocol_version = CHIAKI_DISCOVERY_PROTOCOL_VERSION_PS4;
+		err = chiaki_discovery_send(&service->discovery, &packet, (struct sockaddr *)&additional_addr, sizeof(additional_addr));
+		if(err != CHIAKI_ERR_SUCCESS)
+			CHIAKI_LOGV(service->log, "Discovery Service failed to send ping to 192.168.88.255 for PS4");
+
+		// Send PS5 discovery
+		additional_addr.sin_port = htons(CHIAKI_DISCOVERY_PORT_PS5);
+		packet.protocol_version = CHIAKI_DISCOVERY_PROTOCOL_VERSION_PS5;
+		err = chiaki_discovery_send(&service->discovery, &packet, (struct sockaddr *)&additional_addr, sizeof(additional_addr));
+		if(err != CHIAKI_ERR_SUCCESS)
+			CHIAKI_LOGV(service->log, "Discovery Service failed to send ping to 192.168.88.255 for PS5");
+	}
 }
 
 static void discovery_service_drop_old_hosts(ChiakiDiscoveryService *service)

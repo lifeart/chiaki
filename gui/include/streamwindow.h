@@ -42,6 +42,7 @@ class StreamWindow: public QMainWindow
 		void SessionQuit(ChiakiQuitReason reason, const QString &reason_str);
 		void LoginPINRequested(bool incorrect);
 		void ToggleFullscreen();
+		void VideoFormatDetected();
 };
 
 #endif // CHIAKI_GUI_STREAMWINDOW_H

@@ -88,6 +88,7 @@ class StreamSession : public QObject
 		ChiakiControllerState keyboard_state;
 
 		ChiakiFfmpegDecoder *ffmpeg_decoder;
+		bool video_format_detected;
 		void TriggerFfmpegFrameAvailable();
 #if CHIAKI_LIB_ENABLE_PI_DECODER
 		ChiakiPiDecoder *pi_decoder;
@@ -144,6 +145,7 @@ class StreamSession : public QObject
 
 	signals:
 		void FfmpegFrameAvailable();
+		void VideoFormatDetected();
 		void SessionQuit(ChiakiQuitReason reason, const QString &reason_str);
 		void LoginPINRequested(bool incorrect);
 

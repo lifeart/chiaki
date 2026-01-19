@@ -10,6 +10,7 @@ static enum AVCodecID chiaki_codec_av_codec_id(ChiakiCodec codec)
 		case CHIAKI_CODEC_H265:
 		case CHIAKI_CODEC_H265_HDR:
 			return AV_CODEC_ID_H265;
+			// return AV_CODEC_ID_HEVC;
 		default:
 			return AV_CODEC_ID_H264;
 	}
@@ -19,7 +20,13 @@ CHIAKI_EXPORT ChiakiErrorCode chiaki_ffmpeg_decoder_init(ChiakiFfmpegDecoder *de
 		ChiakiCodec codec, const char *hw_decoder_name,
 		ChiakiFfmpegFrameAvailable frame_available_cb, void *frame_available_cb_user)
 {
+	CHIAKI_LOGI(log, "FFmpeg decoder init: codec=%s (%d), hw_decoder=%s, is_hdr=%s",
+		chiaki_codec_name(codec), codec,
+		hw_decoder_name ? hw_decoder_name : "none",
+		chiaki_codec_is_hdr(codec) ? "yes" : "no");
+
 	decoder->log = log;
+	decoder->codec = codec;
 	decoder->frame_available_cb = frame_available_cb;
 	decoder->frame_available_cb_user = frame_available_cb_user;
 
@@ -29,6 +36,7 @@ CHIAKI_EXPORT ChiakiErrorCode chiaki_ffmpeg_decoder_init(ChiakiFfmpegDecoder *de
 
 	decoder->hw_device_ctx = NULL;
 	decoder->hw_pix_fmt = AV_PIX_FMT_NONE;
+	decoder->detected_pix_fmt = AV_PIX_FMT_NONE;
 
 #if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(58, 10, 100)
 	avcodec_register_all();
@@ -99,10 +107,10 @@ error_mutex:
 
 CHIAKI_EXPORT void chiaki_ffmpeg_decoder_fini(ChiakiFfmpegDecoder *decoder)
 {
-	avcodec_close(decoder->codec_context);
 	avcodec_free_context(&decoder->codec_context);
 	if(decoder->hw_device_ctx)
 		av_buffer_unref(&decoder->hw_device_ctx);
+	chiaki_mutex_fini(&decoder->mutex);
 }
 
 CHIAKI_EXPORT bool chiaki_ffmpeg_decoder_video_sample_cb(uint8_t *buf, size_t buf_size, void *user)
@@ -191,7 +199,18 @@ CHIAKI_EXPORT AVFrame *chiaki_ffmpeg_decoder_pull_frame(ChiakiFfmpegDecoder *dec
 		frame = next_frame;
 		int r = avcodec_receive_frame(decoder->codec_context, frame);
 		if(!r)
+		{
 			frame = decoder->hw_device_ctx ? pull_from_hw(decoder, frame) : frame;
+			// Detect actual pixel format from decoded frame
+			if(frame && decoder->detected_pix_fmt == AV_PIX_FMT_NONE)
+			{
+				decoder->detected_pix_fmt = frame->format;
+				CHIAKI_LOGI(decoder->log, "Detected pixel format: %d (hw_device: %s, frame size: %dx%d)",
+					frame->format,
+					decoder->hw_device_ctx ? "yes" : "no",
+					frame->width, frame->height);
+			}
+		}
 		else
 		{
 			if(r != AVERROR(EAGAIN))
@@ -208,9 +227,36 @@ CHIAKI_EXPORT AVFrame *chiaki_ffmpeg_decoder_pull_frame(ChiakiFfmpegDecoder *dec
 
 CHIAKI_EXPORT enum AVPixelFormat chiaki_ffmpeg_decoder_get_pixel_format(ChiakiFfmpegDecoder *decoder)
 {
-	// TODO: this is probably very wrong, especially for hdr
-	return decoder->hw_device_ctx
-		? AV_PIX_FMT_NV12
-		: AV_PIX_FMT_YUV420P;
+	// Read detected format with mutex protection (written in pull_frame from another thread)
+	chiaki_mutex_lock(&decoder->mutex);
+	enum AVPixelFormat detected = decoder->detected_pix_fmt;
+	chiaki_mutex_unlock(&decoder->mutex);
+
+	// Return actual detected format from decoded frames if available
+	if(detected != AV_PIX_FMT_NONE)
+		return detected;
+
+	// Check codec context pix_fmt (set by FFmpeg after parsing stream)
+	if(decoder->codec_context && decoder->codec_context->pix_fmt != AV_PIX_FMT_NONE)
+		return decoder->codec_context->pix_fmt;
+
+	// Fallback: HDR streams typically use 10-bit P010LE format
+	if(chiaki_codec_is_hdr(decoder->codec))
+		return AV_PIX_FMT_P010LE;
+
+	// Fallback: Hardware-accelerated decoding uses NV12 format
+	if(decoder->hw_device_ctx)
+		return AV_PIX_FMT_NV12;
+
+	// Fallback: Software decoding uses YUV420P format
+	return AV_PIX_FMT_YUV420P;
+}
+
+CHIAKI_EXPORT bool chiaki_ffmpeg_decoder_is_format_detected(ChiakiFfmpegDecoder *decoder)
+{
+	chiaki_mutex_lock(&decoder->mutex);
+	bool detected = decoder->detected_pix_fmt != AV_PIX_FMT_NONE;
+	chiaki_mutex_unlock(&decoder->mutex);
+	return detected;
 }
 
