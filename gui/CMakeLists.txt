@@ -21,8 +21,7 @@ if(APPLE)
 	list(APPEND RESOURCE_FILES "chiaki.icns")
 endif()
 
-add_executable(chiaki WIN32
-		${RESOURCE_FILES}
+set(CHIAKI_GUI_SOURCES
 		include/exception.h
 		src/main.cpp
 		include/streamwindow.h
@@ -62,6 +61,17 @@ add_executable(chiaki WIN32
 		src/controllermanager.cpp
 		include/loginpindialog.h
 		src/loginpindialog.cpp)
+
+# Add macOS-specific HDR helper
+if(APPLE)
+	list(APPEND CHIAKI_GUI_SOURCES
+		include/macoshdrhelper.h
+		src/macoshdrhelper.mm)
+endif()
+
+add_executable(chiaki WIN32
+		${RESOURCE_FILES}
+		${CHIAKI_GUI_SOURCES})
 target_include_directories(chiaki PRIVATE include)
 
 target_link_libraries(chiaki chiaki-lib)
@@ -73,9 +83,9 @@ endif()
 target_link_libraries(chiaki Qt::Core Qt::Widgets Qt::Gui Qt::Concurrent Qt::Multimedia Qt::OpenGL Qt::Svg Qt::OpenGLWidgets)
 target_link_libraries(chiaki SDL2::SDL2)
 if(APPLE)
-	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -framework CoreVideo")
-#	target_link_libraries(chiaki Qt::MacExtras)
-#	target_compile_definitions(chiaki PRIVATE CHIAKI_GUI_ENABLE_QT_MACEXTRAS)
+	# Link macOS frameworks for HDR support
+	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -framework CoreVideo -framework QuartzCore -framework Cocoa")
+	target_compile_definitions(chiaki PRIVATE Q_OS_MACOS)
 endif()
 if(CHIAKI_GUI_ENABLE_SDL_GAMECONTROLLER)
 	target_link_libraries(chiaki SDL2::SDL2)
